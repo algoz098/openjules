@@ -244,11 +244,23 @@ const generatePlan = async (
     /* no package.json */
   }
 
+  let readme = ''
+  try {
+    readme = await sandbox.read_file('README.md')
+  } catch {
+    try {
+      readme = await sandbox.read_file('readme.md')
+    } catch {
+      /* no readme */
+    }
+  }
+
   const customPrompt = await getPlannerPrompt(app, mission.projectId)
 
   const planContext: PlanContext = {
     goal: mission.goal,
     packageJson,
+    readme,
     customPrompt,
     hasSourceRepository
   }
@@ -375,15 +387,8 @@ const executeStep = async (
   }
 
   try {
-    if (maxRetries > 0) {
-      lastResult = await retryWithBackoff(attemptExecution, {
-        maxRetries,
-        baseDelayMs: 2000,
-        label: `step-${step.order_index}`
-      })
-    } else {
-      lastResult = await attemptExecution()
-    }
+    // Note: We disabled internal retries here in favor of the "Smart Retry" loop in runMission
+    lastResult = await attemptExecution()
   } catch (error: any) {
     lastResult = {
       stdout: '',
@@ -617,12 +622,78 @@ export const runMission = async (app: Application, jobId: number) => {
             })
           }
 
-          const result = await executeStep(app, sandbox, mission, step, job.id)
+          let result = await executeStep(app, sandbox, mission, step, job.id)
+          let attempts = 0
+          const maxAttempts = step.retryable ? (step.max_retries || DEFAULT_MAX_RETRIES) : 0
+
+          // Smart Retry Loop
+          while (result.exitCode !== 0 && attempts < maxAttempts) {
+            attempts++
+
+            await createMissionLog(app, {
+              projectId: mission.projectId,
+              missionId: mission.id,
+              stepId: step.id,
+              type: 'thought',
+              content: `Step failed (exit ${result.exitCode}). Attempting smart repair ${attempts}/${maxAttempts}...`
+            })
+
+            // 1. Troubleshoot
+            const troubleshooterProvider = await getAIProviderForRole(app, mission.projectId, 'troubleshooter')
+            const analysisResult = await analyzeStepError(troubleshooterProvider, {
+              missionGoal: mission.goal,
+              stepDescription: step.description,
+              command: step.command,
+              exitCode: result.exitCode,
+              stdout: result.stdout,
+              stderr: result.stderr
+            })
+
+            await createMissionLog(app, {
+              projectId: mission.projectId,
+              missionId: mission.id,
+              stepId: step.id,
+              type: 'thought',
+              content: `Troubleshooter analysis: ${analysisResult.analysis}`
+            })
+
+            // 2. Regenerate Command
+            const coderProvider = await getAIProviderForRole(app, mission.projectId, 'coder')
+            const cmdContext: StepCommandContext = {
+              missionGoal: mission.goal,
+              stepDescription: step.description,
+              stepIndex: index,
+              totalSteps: pendingSteps.length,
+              allStepDescriptions,
+              previousStepsOutput: previousOutputs.length ? previousOutputs.join('\n---\n') : undefined,
+              fileTree: coderFileTree,
+              packageJson: coderPackageJson,
+              background: !!step.background,
+              readyPattern: step.ready_pattern || undefined,
+              errorAnalysis: analysisResult.analysis
+            }
+
+            const cmdResult = await generateStepCommand(coderProvider, cmdContext)
+            await trackUsage('coder', cmdResult.tokenUsage)
+
+            // Update step with new command
+            step.command = cmdResult.command
+            await app.service('mission-steps').patch(step.id, { command: cmdResult.command })
+
+            await createMissionLog(app, {
+              projectId: mission.projectId,
+              missionId: mission.id,
+              stepId: step.id,
+              type: 'thought',
+              content: `Repaired command: \`${truncate(cmdResult.command, 200)}\``
+            })
+
+            // Retry execution
+            result = await executeStep(app, sandbox, mission, step, job.id)
+          }
 
           if (result.exitCode !== 0) {
             // Handle FAILURE (executeStep already patched the step status)
-            // If troubleshooting or retry is needed, we could do it here.
-            // For simplicity, if it fails, we transition mission to FAILED and let user continue via chat.
             if (step.status === 'FAILED') {
               await patchMissionStatus(app, mission.id, 'FAILED', { fail_reason: `Step ${step.order_index} failed.` })
               break
