@@ -65,6 +65,7 @@ export interface PlanContext {
   goal: string
   fileTree?: string
   packageJson?: string
+  readme?: string
   existingSteps?: PlanStep[]
   customPrompt?: string
   hasSourceRepository: boolean
@@ -150,20 +151,22 @@ Each step must have:
 
 Rules:
 1. Always start with an inspection step so the coder agent has context about the workspace.
-2. If a package.json exists with scripts, mention the relevant scripts the coder should use.
-3. End with a validation step (tests, build, lint) if applicable.
-4. End with a "produce final diff" step when a repo is provided.
-5. Keep the plan concise — only essential steps. Typically 3-8 steps.
-6. CRITICAL: If the goal requires starting a long-running service, mark that step as background=true.
-7. If a step needs to verify a running service, place it AFTER the background step.
-8. Respond ONLY with valid JSON matching this schema:
+2. READ THE README.md (if provided) to understand the project architecture, scripts, and guidelines.
+3. If a package.json exists with scripts, mention the relevant scripts the coder should use.
+4. Include explicit VERIFICATION steps (e.g., "Run tests to verify fix", "Curl localhost to verify server").
+5. End with a validation step (tests, build, lint) if applicable.
+6. End with a "produce final diff" step when a repo is provided.
+7. Keep the plan concise — only essential steps. Typically 3-8 steps.
+8. CRITICAL: If the goal requires starting a long-running service, mark that step as background=true.
+9. If a step needs to verify a running service, place it AFTER the background step.
+10. Respond ONLY with valid JSON matching this schema:
 {
   "reasoning": "Brief explanation of your plan strategy",
   "steps": [
     { "description": "...", "timeoutMs": 300000, "retryable": false, "background": false, "readyPattern": "" }
   ]
 }
-9. CRITICAL: NEVER ask the user for clarification about a missing repository. If no repository is provided, you MUST proceed assuming a new project creation in an empty workspace.
+11. CRITICAL: NEVER ask the user for clarification about a missing repository. If no repository is provided, you MUST proceed assuming a new project creation in an empty workspace.
 `
 
 const buildPlanUserPrompt = (ctx: PlanContext): string => {
@@ -172,7 +175,7 @@ const buildPlanUserPrompt = (ctx: PlanContext): string => {
   parts.push(`## Mission Goal\n${ctx.goal}`)
   if (ctx.hasSourceRepository) {
     parts.push(`## Repository\nThe user has provided a source repository. It has been cloned to the workspace.`)
-    parts.push(`You should inspect the file tree and package.json below to understand the project structure.`)
+    parts.push(`You should inspect the file tree, package.json, and README below to understand the project structure.`)
   } else {
     parts.push(`## Repository\nNo repository provided. You are working in a fresh, empty workspace. Do not ask for a repo URL.`)
   }
@@ -183,6 +186,10 @@ const buildPlanUserPrompt = (ctx: PlanContext): string => {
 
   if (ctx.packageJson) {
     parts.push(`## package.json\n\`\`\`json\n${ctx.packageJson}\n\`\`\``)
+  }
+
+  if (ctx.readme) {
+    parts.push(`## README.md\n\`\`\`markdown\n${ctx.readme.slice(0, 8000)}\n\`\`\``)
   }
 
   if (ctx.customPrompt) {
@@ -581,6 +588,11 @@ Rules:
 4. Use the workspace context (file tree, package.json) to pick the right tools and paths.
 5. Prefer the project's own scripts (npm run ...) over raw commands when available.
 6. Be precise — the command will be executed verbatim in a sandbox shell.
+
+CRITICAL — Error Recovery:
+If "TROUBLESHOOTER ANALYSIS" is provided in the context, it means the previous attempt failed.
+You MUST follow the troubleshooter's advice to fix the command.
+Do NOT repeat the exact same command that failed.
 
 CRITICAL — Long-running commands:
 Commands that start servers, watchers, or daemons (node server.js, npm start, npm run dev/serve/watch, python manage.py runserver, etc.) MUST be marked as background=true with an appropriate readyPattern.
