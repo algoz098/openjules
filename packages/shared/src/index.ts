@@ -1,8 +1,10 @@
 export interface Mission {
   id?: string | number;
-  name: string;
+  projectId?: number;
+  goal: string;
+  name?: string; // Optional alias for goal
   description?: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'QUEUED' | 'PLANNING' | 'WAITING_PLAN_APPROVAL' | 'EXECUTING' | 'PAUSED' | 'WAITING_INPUT' | 'VALIDATING' | 'WAITING_REVIEW';
   createdAt?: string;
   updatedAt?: string;
 }
