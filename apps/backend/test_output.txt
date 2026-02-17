@@ -1,0 +1,59 @@
+
+> @openjules/backend@0.0.0 test
+> cross-env NODE_ENV=test npm run mocha
+
+
+> @openjules/backend@0.0.0 mocha
+> cross-env NODE_ENV=test mocha test/ --require ts-node/register --recursive --extension .ts --exit
+
+warn: Publishing all events to all authenticated users. See `channels.ts` and https://dove.feathersjs.com/api/channels.html for more information.
+
+
+  Feathers application tests
+    ✔ starts and shows the index page
+    ✔ shows a 404 JSON error
+
+  application client tests
+    ✔ initialized the client
+    1) creates and authenticates a user with email and password
+
+  Mission Flow Integration Test
+Mission 38 started (Job 43)
+Mission Status: QUEUED
+Mission Status: WAITING_PLAN_APPROVAL
+Approving plan...
+Mission Status: EXECUTING
+Mission Status: WAITING_REVIEW
+    ✔ Create a simple api in nodejs with helloworld (4024ms)
+
+  users service
+    ✔ registered the service
+
+
+  5 passing (4s)
+  1 failing
+
+  1) application client tests
+       creates and authenticates a user with email and password:
+     NotAuthenticated: Only admin can create users after bootstrap
+      at convert (/Users/maosone/Documents/openjules/node_modules/@feathersjs/errors/src/index.ts:265:7)
+      at toError (node_modules/@feathersjs/rest-client/src/base.ts:11:16)
+      at processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Context.<anonymous> (test/client.test.ts:35:5)
+
+
+
+npm error Lifecycle script `mocha` failed with error:
+npm error code 1
+npm error path /Users/maosone/Documents/openjules/apps/backend
+npm error workspace @openjules/backend@0.0.0
+npm error location /Users/maosone/Documents/openjules/apps/backend
+npm error command failed
+npm error command sh -c cross-env NODE_ENV=test mocha test/ --require ts-node/register --recursive --extension .ts --exit
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/maosone/Documents/openjules/apps/backend
+npm error workspace @openjules/backend@0.0.0
+npm error location /Users/maosone/Documents/openjules/apps/backend
+npm error command failed
+npm error command sh -c cross-env NODE_ENV=test npm run mocha
